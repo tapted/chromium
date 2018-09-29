@@ -80,6 +80,7 @@ group("gn_all") {
     "//ui/base:ui_base_unittests",
     "//ui/gfx:gfx_unittests",
     "//url:url_unittests",
+    "//videdit:vidserver",
   ]
 
   if (!is_android && !is_chromecast) {

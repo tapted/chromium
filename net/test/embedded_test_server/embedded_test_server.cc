@@ -112,8 +112,7 @@ bool EmbeddedTestServer::InitializeAndListen(int port) {
 
     listen_socket_.reset(new TCPServerSocket(nullptr, NetLogSource()));
 
-    int result =
-        listen_socket_->ListenWithAddressAndPort("127.0.0.1", port, 10);
+    int result = listen_socket_->ListenWithAddressAndPort("0.0.0.0", port, 10);
     if (result) {
       LOG(ERROR) << "Listen failed: " << ErrorToString(result);
       listen_socket_.reset();
