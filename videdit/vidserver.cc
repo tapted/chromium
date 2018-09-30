@@ -18,10 +18,11 @@
 #include "ui/views_content_client/views_content_client.h"
 
 using namespace net::test_server;
-using base::Value;
 using base::DictionaryValue;
 using base::JSONReader;
 using base::JSONWriter;
+using base::ListValue;
+using base::Value;
 
 namespace {
 
@@ -30,6 +31,7 @@ using Data = std::unique_ptr<DictionaryValue>;
 class VidServer {
  public:
   VidServer() {
+    base::GetCurrentDirectory(&base_path);
     server.AddDefaultHandlers(base::FilePath("videdit"));
     server.RegisterRequestHandler(
         base::BindRepeating(&VidServer::Map, base::Unretained(this)));
@@ -40,9 +42,15 @@ class VidServer {
 
   std::unique_ptr<HttpResponse> Map(const HttpRequest& request);
   std::unique_ptr<HttpResponse> Json(const Data& data);
+
+  std::string MakeRelative(const std::string& absolute);
+  base::FilePath ToPath(const Data& data);
+  ListValue Entries(const base::FilePath& folder, int types);
   Data Files(const Data& data);
+  Data Open(const Data& data);
 
  private:
+  base::FilePath base_path;
   net::EmbeddedTestServer server{net::EmbeddedTestServer::TYPE_HTTP};
 };
 
@@ -55,12 +63,14 @@ void Start(content::BrowserContext* browser_context,
 }
 
 std::unique_ptr<HttpResponse> VidServer::Map(const HttpRequest& request) {
-  auto data = DictionaryValue::From(JSONReader::Read(request.content));
-  if (request.relative_url == "/files")
-    return Json(Files(data));
   LOG(INFO) << request.relative_url;
   LOG(INFO) << request.method_string;
   LOG(INFO) << request.content;
+  auto data = DictionaryValue::From(JSONReader::Read(request.content));
+  if (request.relative_url == "/files")
+    return Json(Files(data));
+  if (request.relative_url == "/open")
+    return Json(Open(data));
   return nullptr;
 }
 
@@ -73,24 +83,43 @@ std::unique_ptr<HttpResponse> VidServer::Json(const Data& data) {
   return std::move(response);
 }
 
-Data VidServer::Files(const Data& data) {
-  base::FilePath path;
-  if (auto* found = data->FindKeyOfType("path", Value::Type::STRING))
-    ignore_result(path.Append(found->GetString()));
-  else
-    base::GetCurrentDirectory(&path);
+std::string VidServer::MakeRelative(const std::string& absolute) {
+  if (absolute.empty() || absolute[0] != '/')
+    return absolute;
+  if (absolute.find(base_path.value()) == 0)
+    return absolute.substr(base_path.value().size() + 1);
+  return absolute.substr(1);
+}
 
+base::FilePath VidServer::ToPath(const Data& data) {
+  if (auto* found = data->FindKeyOfType("path", Value::Type::STRING))
+    return base_path.Append(MakeRelative(found->GetString()));
+  return base_path;
+}
+
+ListValue VidServer::Entries(const base::FilePath& folder, int types) {
   const bool kRecursive = false;
-  const int kTypes = base::FileEnumerator::FILES |
-                     base::FileEnumerator::DIRECTORIES |
-                     base::FileEnumerator::INCLUDE_DOT_DOT;
-  base::FileEnumerator files(path, kRecursive, kTypes);
+  base::FileEnumerator files(folder, kRecursive, types);
   Value::ListStorage files_list;
-  for (path = files.Next(); !path.empty(); path = files.Next())
-    files_list.emplace_back(Value(path.value()));
+  for (base::FilePath path = files.Next(); !path.empty(); path = files.Next())
+    files_list.emplace_back(MakeRelative(path.value()));
+  return ListValue(std::move(files_list));
+}
+
+Data VidServer::Files(const Data& data) {
+  base::FilePath path = ToPath(data);
+  LOG(INFO) << "Reading: " << path.value();
 
   auto result = std::make_unique<DictionaryValue>();
-  result->SetKey("entries", Value(std::move(files_list)));
+  result->SetKey("folders", Entries(path, base::FileEnumerator::DIRECTORIES));
+  result->SetKey("entries", Entries(path, base::FileEnumerator::FILES));
+  return result;
+}
+
+Data VidServer::Open(const Data& data) {
+  base::FilePath path = ToPath(data);
+  LOG(INFO) << "Opening: " << path.value();
+  auto result = std::make_unique<DictionaryValue>();
   return result;
 }
 
