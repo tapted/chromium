@@ -5,7 +5,9 @@
 #include <memory>
 
 #include "base/bind.h"
+#include "base/files/file_enumerator.h"
 #include "base/files/file_path.h"
+#include "base/files/file_util.h"
 #include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
 #include "base/logging.h"
@@ -16,15 +18,18 @@
 #include "ui/views_content_client/views_content_client.h"
 
 using namespace net::test_server;
+using base::Value;
+using base::DictionaryValue;
+using base::JSONReader;
+using base::JSONWriter;
 
 namespace {
 
-using Data = std::unique_ptr<base::Value>;
+using Data = std::unique_ptr<DictionaryValue>;
 
 class VidServer {
  public:
   VidServer() {
-    //net::SpawnedTestServer spawn(net::SpawnedTestServer::TYPE_HTTP, root);
     server.AddDefaultHandlers(base::FilePath("videdit"));
     server.RegisterRequestHandler(
         base::BindRepeating(&VidServer::Map, base::Unretained(this)));
@@ -50,7 +55,7 @@ void Start(content::BrowserContext* browser_context,
 }
 
 std::unique_ptr<HttpResponse> VidServer::Map(const HttpRequest& request) {
-  auto data = base::JSONReader::Read(request.content);
+  auto data = DictionaryValue::From(JSONReader::Read(request.content));
   if (request.relative_url == "/files")
     return Json(Files(data));
   LOG(INFO) << request.relative_url;
@@ -69,7 +74,24 @@ std::unique_ptr<HttpResponse> VidServer::Json(const Data& data) {
 }
 
 Data VidServer::Files(const Data& data) {
-  return std::make_unique<base::ListValue>();
+  base::FilePath path;
+  if (auto* found = data->FindKeyOfType("path", Value::Type::STRING))
+    ignore_result(path.Append(found->GetString()));
+  else
+    base::GetCurrentDirectory(&path);
+
+  const bool kRecursive = false;
+  const int kTypes = base::FileEnumerator::FILES |
+                     base::FileEnumerator::DIRECTORIES |
+                     base::FileEnumerator::INCLUDE_DOT_DOT;
+  base::FileEnumerator files(path, kRecursive, kTypes);
+  Value::ListStorage files_list;
+  for (path = files.Next(); !path.empty(); path = files.Next())
+    files_list.emplace_back(Value(path.value()));
+
+  auto result = std::make_unique<DictionaryValue>();
+  result->SetKey("entries", Value(std::move(files_list)));
+  return result;
 }
 
 }  // namespace
