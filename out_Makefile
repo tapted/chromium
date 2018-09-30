@@ -1,0 +1,5 @@
+default:
+	 ninja videdit:vidserver 2>&1 | sed -u -e 's,^\.\./\.\./,,'
+
+run: default
+	vidserver
