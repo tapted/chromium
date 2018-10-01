@@ -12,6 +12,7 @@
 #include "base/json/json_writer.h"
 #include "base/logging.h"
 #include "base/values.h"
+#include "net/base/escape.h"
 #include "net/test/embedded_test_server/embedded_test_server.h"
 #include "net/test/embedded_test_server/http_request.h"
 #include "net/test/embedded_test_server/http_response.h"
@@ -76,9 +77,36 @@ std::unique_ptr<HttpResponse> VidServer::Map(const HttpRequest& request) {
   constexpr char kSrc[] = "/src/";
   if (request.relative_url.find(kSrc) == 0) {
     HttpRequest src_request = request;
-    src_request.relative_url.erase(0, base::size(kSrc) - 2);
+
+    // This leaves crap on the end? Maybe it's buggy.
+    // net::UnescapeBinaryURLComponent(
+    //    request.relative_url.substr(base::size(kSrc) - 2),
+    //    &src_request.relative_url);
+    src_request.relative_url = net::UnescapeURLComponent(
+        request.relative_url.substr(base::size(kSrc) - 2),
+        net::UnescapeRule::SPACES);
+    LOG(INFO) << src_request.GetURL();
     LOG(INFO) << base_path.value();
     LOG(INFO) << src_request.relative_url;
+    LOG(INFO) << src_request.all_headers;
+
+// Somethinglike..
+#if 0
+      network::ResourceRequest request,
+      network::mojom::URLLoaderRequest loader,
+      network::mojom::URLLoaderClientPtr client,
+      scoped_refptr<ContentVerifier> content_verifier,
+      const extensions::ExtensionResource& resource,
+      const std::string& content_security_policy,
+      bool send_cors_header
+    request.url = net::FilePathToFileURL(*read_file_path);
+
+    content::CreateFileURLLoader(
+        request, std::move(loader), std::move(client),
+        std::make_unique<FileLoaderObserver>(std::move(verify_job)),
+        std::move(response_headers));
+#endif
+
     return HandleFileRequest(base_path, src_request);
   }
 

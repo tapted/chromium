@@ -19,6 +19,7 @@
 #include "base/threading/thread_restrictions.h"
 #include "build/build_config.h"
 #include "net/base/escape.h"
+#include "net/base/mime_util.h"
 #include "net/base/url_util.h"
 #include "net/http/http_byte_range.h"
 #include "net/http/http_util.h"
@@ -30,6 +31,10 @@ namespace test_server {
 const char kMockHttpHeadersExtension[] = "mock-http-headers";
 
 std::string GetContentType(const base::FilePath& path) {
+  std::string mime_type;
+  if (net::GetMimeTypeFromFile(path, &mime_type))
+    return mime_type;
+
   if (path.MatchesExtension(FILE_PATH_LITERAL(".crx")))
     return "application/x-chrome-extension";
   if (path.MatchesExtension(FILE_PATH_LITERAL(".css")))
@@ -150,7 +155,11 @@ std::unique_ptr<HttpResponse> HandleFileRequest(
   // A proxy request will have an absolute path. Simulate the proxy by stripping
   // the scheme, host, and port.
   GURL request_url = request.GetURL();
-  std::string relative_path(request_url.path());
+  std::string relative_path;
+
+  net::UnescapeBinaryURLComponent(request_url.path(), &relative_path);
+
+  LOG(INFO) << "relative_path=" << relative_path;
 
   std::string post_prefix("/post/");
   if (base::StartsWith(relative_path, post_prefix,
@@ -186,15 +195,23 @@ std::unique_ptr<HttpResponse> HandleFileRequest(
   }
 
   // Trim the first byte ('/').
-  DCHECK(base::StartsWith(relative_path, "/", base::CompareCase::SENSITIVE));
+  DCHECK(base::StartsWith(relative_path, "/", base::CompareCase::SENSITIVE))
+      << relative_path;
   std::string request_path = relative_path.substr(1);
   base::FilePath file_path(server_root.AppendASCII(request_path));
+  LOG(INFO) << "Reading path: " << file_path.value();
   std::string file_contents;
-  if (!base::ReadFileToString(file_path, &file_contents)) {
+  if (!base::PathExists(file_path) || base::DirectoryExists(file_path)) {
     file_path = file_path.AppendASCII("index.html");
     if (!base::ReadFileToString(file_path, &file_contents))
       return nullptr;
+  } else {
+    constexpr size_t kMaxBytes = 1024 * 1024 * 1024;
+    base::ReadFileToStringWithMaxSize(file_path, &file_contents, kMaxBytes);
   }
+
+  LOG(INFO) << "Read " << file_contents.size() << " bytes for "
+            << request.method;
 
   if (request.method == METHOD_HEAD)
     file_contents = "";
@@ -229,6 +246,8 @@ std::unique_ptr<HttpResponse> HandleFileRequest(
   if (request.headers.find("Range") != request.headers.end()) {
     std::vector<HttpByteRange> ranges;
 
+    LOG(INFO) << "Range header..";
+
     if (HttpUtil::ParseRangeHeader(request.headers.at("Range"), &ranges) &&
         ranges.size() == 1) {
       ranges[0].ComputeBounds(file_contents.size());
@@ -242,6 +261,7 @@ std::unique_ptr<HttpResponse> HandleFileRequest(
                              file_contents.size()));
 
       file_contents = file_contents.substr(start, end - start + 1);
+      LOG(INFO) << "Trimmed to " << file_contents.size();
     }
   }
 

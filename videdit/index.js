@@ -62,8 +62,8 @@ class FileEntry extends Entry {
     timeElement.innerHTML = (new Date(this.mtime)).toISOString();
     this.appendChild(timeElement);
 
-    if (!this.path.endsWith('.ts'))
-      return;
+    //    if (!this.path.endsWith('.ts'))
+    //      return;
 
     let videoElement = document.createElement('video');
     videoElement.slot = 'video';
@@ -71,6 +71,9 @@ class FileEntry extends Entry {
     let srcElement = document.createElement('source');
     srcElement.src = '/src/' + encodeURI(this.path);
     videoElement.appendChild(srcElement);
+    srcElement.onerror = (e) => {
+      console.error('Error loading ' + this.path + ': ' + srcElement.error);
+    };
     this.appendChild(videoElement);
   }
 
