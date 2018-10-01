@@ -52,16 +52,26 @@ class FileEntry extends Entry {
       this.openFile(evt);
     });
 
-    const prefix = '<br>&middot; ';
     let sizeElement = document.createElement('span');
     sizeElement.slot = 'size';
-    sizeElement.innerHTML = prefix + fileSizeIEC(this.size);
+    sizeElement.innerHTML = fileSizeIEC(this.size);
     this.appendChild(sizeElement);
 
     let timeElement = document.createElement('span');
     timeElement.slot = 'mtime';
-    timeElement.innerHTML = prefix + (new Date(this.mtime)).toISOString();
+    timeElement.innerHTML = (new Date(this.mtime)).toISOString();
     this.appendChild(timeElement);
+
+    if (!this.path.endsWith('.ts'))
+      return;
+
+    let videoElement = document.createElement('video');
+    videoElement.slot = 'video';
+    videoElement.controls = true;
+    let srcElement = document.createElement('source');
+    srcElement.src = '/src/' + encodeURI(this.path);
+    videoElement.appendChild(srcElement);
+    this.appendChild(videoElement);
   }
 
   openFile(evt) {

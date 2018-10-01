@@ -15,6 +15,7 @@
 #include "net/test/embedded_test_server/embedded_test_server.h"
 #include "net/test/embedded_test_server/http_request.h"
 #include "net/test/embedded_test_server/http_response.h"
+#include "net/test/embedded_test_server/request_handler_util.h"
 #include "ui/views_content_client/views_content_client.h"
 
 using namespace net::test_server;
@@ -42,6 +43,7 @@ class VidServer {
 
   std::unique_ptr<HttpResponse> Map(const HttpRequest& request);
   std::unique_ptr<HttpResponse> Json(const Data& data);
+  std::unique_ptr<HttpResponse> Src(const std::string& path);
 
   std::string MakeRelative(const std::string& absolute);
   base::FilePath ToPath(const Data& data);
@@ -70,6 +72,16 @@ std::unique_ptr<HttpResponse> VidServer::Map(const HttpRequest& request) {
     return Json(Files(data));
   if (request.relative_url == "/open")
     return Json(Open(data));
+
+  constexpr char kSrc[] = "/src/";
+  if (request.relative_url.find(kSrc) == 0) {
+    HttpRequest src_request = request;
+    src_request.relative_url.erase(0, base::size(kSrc) - 2);
+    LOG(INFO) << base_path.value();
+    LOG(INFO) << src_request.relative_url;
+    return HandleFileRequest(base_path, src_request);
+  }
+
   return nullptr;
 }
 
