@@ -7,10 +7,23 @@
 </head>
 <body>
 
-<template id="files-entry-template">
-	<style>
-	</style>
-  <li><slot name="path">?</slot><slot name="index"></slot></li>
+<template id="dir-entry-template">
+  <style>
+  </style>
+  <li>
+    <slot name="path">?</slot>
+    <slot name="index"></slot>
+  </li>
+</template>
+
+<template id="file-entry-template">
+  <style>
+  </style>
+  <li>
+    <slot name="path">?</slot>
+    <slot name="mtime"></slot>
+    <slot name="size"></slot>
+  </li>
 </template>
 
 </body>

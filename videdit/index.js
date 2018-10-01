@@ -11,36 +11,73 @@ function fetchJson(url, data = {}) {
       .then(response => response.json());
 }
 
-class FilesEntry extends HTMLElement {
-  constructor(path, isDir = false) {
-    super();
-    this.path = path;
-    this.isDir = isDir;
-    this.index = null;
+function fileSizeIEC(a, b, c, d, e) {
+  return (b = Math, c = b.log, d = 1024, e = c(a) / c(d) | 0, a / b.pow(d, e))
+             .toFixed(2) +
+      ' ' + (e ? 'KMGTPEZY'[--e] + 'iB' : 'Bytes')
+}
 
-    let template = document.getElementById('files-entry-template').content;
+class Entry extends HTMLElement {
+  constructor(entry, templateName) {
+    super();
+    this.path = entry.path;
+    this.mtime = entry.mtime;
+    this.size = entry.size;
+    this.isDir = entry.isDir;
+
+    let template = document.getElementById(templateName).content;
     const shadowRoot =
         this.attachShadow({mode: 'open'}).appendChild(template.cloneNode(true));
+  }
 
-    const suffix = isDir ? '/' : '';
+  appendAnchor(suffix) {
     let anchor = document.createElement('a');
     anchor.slot = 'path';
     anchor.href = 'javascript:void(0)';
-    anchor.innerHTML = path.split('/').pop() + suffix;
+    anchor.innerHTML = this.path.split('/').pop() + suffix;
     this.appendChild(anchor);
-    if (this.isDir) {
-      anchor.addEventListener('click', (evt) => {
-        this.toggleDir(evt);
-      });
-    } else {
-      anchor.addEventListener('click', (evt) => {
-        this.openFile(evt);
-      })
-    }
+    return anchor;
   }
 
   makeReq() {
     return {'path': this.path};
+  }
+}
+
+class FileEntry extends Entry {
+  constructor(entry) {
+    super(entry, 'file-entry-template');
+    this.index = null;
+    this.appendAnchor('').addEventListener('click', (evt) => {
+      this.openFile(evt);
+    });
+
+    const prefix = '<br>&middot; ';
+    let sizeElement = document.createElement('span');
+    sizeElement.slot = 'size';
+    sizeElement.innerHTML = prefix + fileSizeIEC(this.size);
+    this.appendChild(sizeElement);
+
+    let timeElement = document.createElement('span');
+    timeElement.slot = 'mtime';
+    timeElement.innerHTML = prefix + (new Date(this.mtime)).toISOString();
+    this.appendChild(timeElement);
+  }
+
+  openFile(evt) {
+    fetchJson('/open', this.makeReq()).then((result) => {
+      console.log(result);
+    });
+  }
+}
+
+class DirEntry extends Entry {
+  constructor(entry) {
+    super(entry, 'dir-entry-template');
+    this.index = null;
+    this.appendAnchor('/').addEventListener('click', (evt) => {
+      this.toggleDir(evt);
+    });
   }
 
   toggleDir(evt) {
@@ -52,12 +89,7 @@ class FilesEntry extends HTMLElement {
       this.appendChild(this.index);
     }
   }
-  openFile(evt) {
-    fetchJson('/open', this.makeReq()).then((result) => {
-      console.log(result);
-    });
-  }
-}
+};
 
 class FilesIndex extends HTMLUListElement {
   constructor(req = {}) {
@@ -66,15 +98,16 @@ class FilesIndex extends HTMLUListElement {
     fetchJson('/files', req).then((files) => {
       console.log(files);
       for (let dir in files.folders)
-        this.appendChild(new FilesEntry(files.folders[dir], true));
+        this.appendChild(new DirEntry(files.folders[dir], true));
       for (let file in files.entries)
-        this.appendChild(new FilesEntry(files.entries[file]));
+        this.appendChild(new FileEntry(files.entries[file]));
     });
   }
 }
 
 customElements.define('files-index', FilesIndex, {'extends': 'ul'});
-customElements.define('files-entry', FilesEntry);
+customElements.define('dir-entry', DirEntry);
+customElements.define('file-entry', FileEntry);
 let rootFolder = new FilesIndex();
 
 document.addEventListener('DOMContentLoaded', (event) => {

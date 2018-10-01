@@ -64,7 +64,6 @@ void Start(content::BrowserContext* browser_context,
 
 std::unique_ptr<HttpResponse> VidServer::Map(const HttpRequest& request) {
   LOG(INFO) << request.relative_url;
-  LOG(INFO) << request.method_string;
   LOG(INFO) << request.content;
   auto data = DictionaryValue::From(JSONReader::Read(request.content));
   if (request.relative_url == "/files")
@@ -84,6 +83,7 @@ std::unique_ptr<HttpResponse> VidServer::Json(const Data& data) {
 }
 
 std::string VidServer::MakeRelative(const std::string& absolute) {
+  // Use CreateFilePathValue?
   if (absolute.empty() || absolute[0] != '/')
     return absolute;
   if (absolute.find(base_path.value()) == 0)
@@ -101,8 +101,15 @@ ListValue VidServer::Entries(const base::FilePath& folder, int types) {
   const bool kRecursive = false;
   base::FileEnumerator files(folder, kRecursive, types);
   Value::ListStorage files_list;
-  for (base::FilePath path = files.Next(); !path.empty(); path = files.Next())
-    files_list.emplace_back(MakeRelative(path.value()));
+  for (base::FilePath path = files.Next(); !path.empty(); path = files.Next()) {
+    auto info = files.GetInfo();
+    Value dict(Value::Type::DICTIONARY);
+    dict.SetKey("path", Value(MakeRelative(path.value())));
+    dict.SetKey("size", Value(static_cast<double>(info.GetSize())));
+    dict.SetKey("isDir", Value(info.IsDirectory()));
+    dict.SetKey("mtime", Value(info.GetLastModifiedTime().ToJsTime()));
+    files_list.emplace_back(std::move(dict));
+  }
   return ListValue(std::move(files_list));
 }
 
